@@ -189,8 +189,17 @@ vector<Task> readInstanceFile(string fileDir) {
 }
 
 int main() {
+    string resultReport = "";
+
+// 实例测试
+vector<string> iNum {"10", "20", "30", "40", "50", "60", "70", "80", "90", "100"}; // 实例任务数量
+vector<string> iRep {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}; // 实例重复轮次
+
+for(auto it_n = iNum.begin(); it_n != iNum.end(); it_n++) { // 实例任务数量循环开始
+for(auto it_r = iRep.begin(); it_r != iRep.end(); it_r++) { // 实例重复轮次循环开始
+
     // 读取任务序列
-    vector<Task> taskList = readInstanceFile("./TestInstances_3/10/10_0.txt");
+    vector<Task> taskList = readInstanceFile("./TestInstances/" + *it_n + "/" + *it_n + "_" + *it_r + ".txt");
 
     // 记录历代最优值
     vector<double> championFitnessRecord;
@@ -249,25 +258,36 @@ int main() {
     // 计算运行时间
     double duration = (endTime.tv_sec - startTime.tv_sec)*1000.0 + (endTime.tv_usec - startTime.tv_usec)/1000.0;
 
-    // 写入输出文件
-    ofstream fileOut;
-    fileOut.open("./Test Result - GWO (Discrete, Hamming Distance).txt");
-    string resultReport = "";
-    resultReport += to_string(taskList.size()) + "\t"; // 任务数量
-    resultReport += to_string(0) + '\t'; // 测试次数编号
+    // 记录信息
+    resultReport += *it_n + "\t"; // 任务数量
+    resultReport += *it_r + '\t'; // 测试次数编号
     resultReport += to_string(championWolf.fitness) + "\t"; // 最优makespan
     resultReport += to_string(duration) + "\t"; // 运行时间
     resultReport += "\t";
+
+    // 控制台输出日志
+    time_t time_t_now = time(nullptr);
+    char* timeStamp = ctime(&time_t_now);
+    timeStamp[strlen(timeStamp) - 1] = 0;
+    cout << "[" << timeStamp <<"] ";
+    cout << "Completed Instance " + *it_n + "_" + *it_r + ".\n";
+
+} // 实例重复轮次循环结束
+} // 实例任务数量循环结束
+
+    // 写入输出文件
+    ofstream fileOut;
+    fileOut.open("./Test Result - GWO (Discrete, Hamming Distance).txt");
     fileOut << resultReport;
     fileOut.close();
 
-    // 历代最优值记录
-    fileOut.open("./Champion Record - GWO (Discrete, Hamming Distance).txt");
-    string championRecordReport = "";
-    for(int i=0; i<championFitnessRecord.size(); i++)
-        championRecordReport += to_string(i) + "\t" + to_string(championFitnessRecord.at(i)) + "\n";
-    fileOut << championRecordReport;
-    fileOut.close();
+    // // 历代最优值记录
+    // fileOut.open("./Champion Record - GWO (Discrete, Hamming Distance).txt");
+    // string championRecordReport = "";
+    // for(int i=0; i<championFitnessRecord.size(); i++)
+    //     championRecordReport += to_string(i) + "\t" + to_string(championFitnessRecord.at(i)) + "\n";
+    // fileOut << championRecordReport;
+    // fileOut.close();
 
     // Test
     // for(auto i = population.begin(); i != population.end(); i++) {
