@@ -263,7 +263,7 @@ for(auto it_r = iRep.begin(); it_r != iRep.end(); it_r++) { // 实例重复轮�
     resultReport += *it_r + '\t'; // 测试次数编号
     resultReport += to_string(championWolf.fitness) + "\t"; // 最优makespan
     resultReport += to_string(duration) + "\t"; // 运行时间
-    resultReport += "\t";
+    resultReport += "\n";
 
     // 控制台输出日志
     time_t time_t_now = time(nullptr);
