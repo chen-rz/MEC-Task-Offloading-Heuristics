@@ -131,14 +131,16 @@ int main() {
     string resultReport = "";
 
 // 实例测试
-vector<string> iNum {/*"10", "20",*/ "30", "40", "50", "60", "70", "80", "90", "100"}; // 实例任务数量
-vector<string> iRep {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}; // 实例重复轮次
+vector<string> iTN {/*"10", "20",*/ "30", "40", "50", "60", "70", "80", "90", "100"}; // 实例任务数量
+vector<string> iID {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}; // 实例编号
+int iRepeatTimes = 5; // 每个实例重复次数
 
-for(auto it_n = iNum.begin(); it_n != iNum.end(); it_n++) { // 实例任务数量循环开始
-for(auto it_r = iRep.begin(); it_r != iRep.end(); it_r++) { // 实例重复轮次循环开始
+for(auto it_n = iTN.begin(); it_n != iTN.end(); it_n++) { // 实例任务数量循环开始
+for(auto it_id = iID.begin(); it_id != iID.end(); it_id++) { // 实例编号循环开始
+for(int i_r = 0; i_r < iRepeatTimes; i_r++) { // 实例重复测试开始
 
     // 读取任务序列
-    vector<Task> taskList = readInstanceFile("./TestInstances_3/" + *it_n + "/" + *it_n + "_" + *it_r + ".txt");
+    vector<Task> taskList = readInstanceFile("./TestInstances_3/" + *it_n + "/" + *it_n + "_" + *it_id + ".txt");
 
     // 记录历代最优值
     vector<double> championFitnessRecord;
@@ -215,7 +217,8 @@ for(auto it_r = iRep.begin(); it_r != iRep.end(); it_r++) { // 实例重复轮�
 
     // 记录信息
     resultReport += *it_n + "\t"; // 任务数量
-    resultReport += *it_r + '\t'; // 测试次数编号
+    resultReport += *it_id + '\t'; // 测试实例编号
+    resultReport += to_string(i_r) + "\t"; // 重复测试次数
     resultReport += to_string(championWolf.fitness) + "\t"; // 最优makespan
     resultReport += to_string(duration) + "\t"; // 运行时间
     resultReport += "\n";
@@ -225,9 +228,10 @@ for(auto it_r = iRep.begin(); it_r != iRep.end(); it_r++) { // 实例重复轮�
     char* timeStamp = ctime(&time_t_now);
     timeStamp[strlen(timeStamp) - 1] = 0;
     cout << "[" << timeStamp <<"] ";
-    cout << "Completed Instance " + *it_n + "_" + *it_r + ".\n";
+    cout << "Completed Instance " + *it_n + "_" + *it_id + "_" + to_string(i_r) + ".\n";
 
-} // 实例重复轮次循环结束
+} // 实例重复测试结束
+} // 实例编号循环结束
 } // 实例任务数量循环结束
 
     // 写入输出文件
