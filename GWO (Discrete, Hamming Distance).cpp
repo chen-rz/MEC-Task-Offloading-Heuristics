@@ -2,7 +2,6 @@
 #include <fstream>
 #include <assert.h>
 #include <vector>
-#include <utility>
 #include <string.h>
 #include <algorithm>
 #include <math.h>
@@ -21,8 +20,6 @@ using namespace std;
 #define POP_SIZE 30 // 灰狼种群规模
 #define EPOCH 1000 // 迭代次数
 #define POWER 5.0 // 发射功率（mW）
-#define MIN_POS 0.0 // 位置下限
-#define MAX_POS 4.0 // 位置上限
 
 default_random_engine rand_eng(time(0)); // 随机数
 
@@ -47,24 +44,16 @@ class Wolf {
     public:
         int id;
         vector<Task> taskList;
-        vector<double> position; // 位置信息，用于ROV Mapping
         double fitness;
 
-        double calcFitness(); // 计算fitness，见下文
-        void ROV(); // ROV Mapping，见下文
+        double calcFitness();
 
         Wolf(int id, vector<Task> taskList) {
             this->id = id;
             this->taskList = taskList;
-            // 自动生成随机位置信息
-            uniform_real_distribution<double> rand_real(MIN_POS, MAX_POS);
-            for(int i=0; i<taskList.size(); i++) {
-                this->position.emplace_back(rand_real(rand_eng));
-            }
-            ROV(); // 生成随机任务序列
             this->fitness = calcFitness(); // 自动计算适应度
         }
-        Wolf() { // 默认无参构造函数，用于声明alpha、beta、gamma狼
+        Wolf() {
             this->id = -1;
             this->fitness = INT_MAX;
         }
@@ -94,19 +83,91 @@ double Wolf::calcFitness() {
     assert(t_complete.size() == taskList.size());
     return *(max_element(t_complete.begin(), t_complete.end()));
 }
-// ROV Mapping，更新任务序列
-void Wolf::ROV() {
-    vector<pair<double, int>> rankedPosition; // 位置信息副本用于排序，不破坏原有的下标顺序
-    for(int i=0; i<position.size(); i++)
-        rankedPosition.emplace_back(pair<double, int> (position.at(i), i));
-    sort(rankedPosition.begin(), rankedPosition.end(),
-        []( pair<double, int> a, pair<double, int> b ){ return a.first < b.first; }
-    ); // 排序
-    vector<Task> newTaskList;
-    for(auto i = rankedPosition.begin(); i != rankedPosition.end(); i++) {
-        newTaskList.emplace_back(this->taskList.at( (*i).second ));
-    } // 取对应下标
-    this->taskList = newTaskList;
+
+// Hamming Distance
+int calcHammingDistance(vector<Task> a, vector<Task> b) {
+    assert(a.size() == b.size());
+    int hd = 0;
+    for(int i=0; i<a.size(); i++) {
+        if(a.at(i).id != b.at(i).id)
+            hd++;
+    }
+    return hd;
+}
+
+// ？
+int Dn(int n) {
+    int d_n = - (n % 2) + (n + 1) % 2;
+    int sum = 0, u = n, d_u = d_n;
+    while(u > 0) {
+        sum += d_u;
+        d_u = - d_u * u;
+        u -= 1;
+    }
+    sum += d_u;
+    return sum;
+}
+double Prob(int u) {
+    if(u > 10)
+        return 1.0 / u;
+    else
+        return (u - 1.0) * Dn(u - 2)/Dn(u);
+}
+
+// 根据距离更新任务序列
+vector<Task> getNewTaskSequence(vector<Task> taskSeq, int distance) {
+    auto newTaskSeq = taskSeq;
+
+    // 保证距离范围
+    if(distance > taskSeq.size())
+        distance = taskSeq.size();
+    if(distance < 1)
+        distance = 1;
+
+    vector<int> indexes, pickedIndex, marked;
+    decltype(taskSeq) que;
+    for(int i=0; i<taskSeq.size(); i++)
+        indexes.emplace_back(i);
+    
+    for(int i=0; i<distance; i++) {
+        int rIndex = taskSeq.size() - i - 1; // 反向遍历下标
+        uniform_int_distribution<int> rand_int(0, rIndex);
+        int swapIndex = rand_int(rand_eng); // 随机取一个用来交换
+        swap(indexes.at(rIndex), indexes.at(swapIndex));
+        pickedIndex.emplace_back(indexes.at(rIndex)); // 记录已选的下标
+        que.emplace_back(taskSeq.at(indexes.at(rIndex)));
+        marked.emplace_back(0);
+    }
+
+    // ？
+    for(int i = 0; i < distance - 1; i++) {
+        int rIndex = distance - i - 1; // 反向遍历下标
+        uniform_int_distribution<int> rand_int(0, rIndex);
+        int swapIndex = rand_int(rand_eng);
+        if(marked.at(rIndex) == 1)
+            continue;
+        while(true) {
+            if(marked.at(swapIndex) == 0)
+                break;
+            int firstavailable = distance;
+            for(int i=0; i<distance; i++) {
+                if(marked.at(i) == 0)
+                    firstavailable = i;
+            }
+            if(firstavailable >= rIndex)
+                break;
+        }
+        swap(que.at(rIndex), que.at(swapIndex));
+
+        uniform_real_distribution<double> rand_p(0.0, 1.0);
+        double p = rand_p(rand_eng);
+        if(p < Prob(rIndex + 1))
+            marked.at(swapIndex) = 1;
+    }
+
+    for(int i=0; i<distance; i++)
+        newTaskSeq.at(pickedIndex.at(i)) = que.at(i);
+    return newTaskSeq;
 }
 
 // 读取Instance文件，格式：id - dataSize - cyclePerBit
@@ -128,17 +189,8 @@ vector<Task> readInstanceFile(string fileDir) {
 }
 
 int main() {
-    string resultReport = "";
-
-// 实例测试
-vector<string> iNum {"10", "20", "30", "40", "50", "60", "70", "80", "90", "100"}; // 实例任务数量
-vector<string> iRep {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}; // 实例重复轮次
-
-for(auto it_n = iNum.begin(); it_n != iNum.end(); it_n++) { // 实例任务数量循环开始
-for(auto it_r = iRep.begin(); it_r != iRep.end(); it_r++) { // 实例重复轮次循环开始
-
     // 读取任务序列
-    vector<Task> taskList = readInstanceFile("./TestInstances/" + *it_n + "/" + *it_n + "_" + *it_r + ".txt");
+    vector<Task> taskList = readInstanceFile("./TestInstances_3/10/10_0.txt");
 
     // 记录历代最优值
     vector<double> championFitnessRecord;
@@ -150,9 +202,11 @@ for(auto it_r = iRep.begin(); it_r != iRep.end(); it_r++) { // 实例重复轮�
     // 初始化灰狼种群
     vector<Wolf> population;
     Wolf alphaWolf, betaWolf, deltaWolf, championWolf;
-    assert(championWolf.fitness == INT_MAX);
-    for(int i=0; i<POP_SIZE; i++)
-        population.emplace_back( Wolf(i, taskList) ); // 将个体加入种群
+    championWolf.fitness = INT_MAX;
+    for(int i=0; i<POP_SIZE; i++) {
+        random_shuffle(taskList.begin(), taskList.end()); // 随机个体
+        population.emplace_back( Wolf(i, taskList) ); // 列入种群，自动计算适应度
+    }
     // 初始设置前三名和历史最佳
     sort( population.begin(), population.end(), [](Wolf a, Wolf b){return a.fitness < b.fitness;} );
     alphaWolf = population.at(0);
@@ -160,38 +214,20 @@ for(auto it_r = iRep.begin(); it_r != iRep.end(); it_r++) { // 实例重复轮�
     deltaWolf = population.at(2);
     if(alphaWolf.fitness < championWolf.fitness)
         championWolf = alphaWolf;
-    championFitnessRecord.emplace_back(championWolf.fitness);
-    // 初始设置目标位置
-    vector<double> targetPosition;
-    for(int i=0; i<taskList.size(); i++)
-        targetPosition.emplace_back( (alphaWolf.position.at(i) + betaWolf.position.at(i) + deltaWolf.position.at(i)) / 3.0 );
 
     // 灰狼算法迭代
     for(int epo = 0; epo < EPOCH; epo++) {
         // 对于种群中的每一个个体
         for(auto i = population.begin(); i != population.end(); i++) {
             // 更新参数
-            uniform_real_distribution<double> rand_real(0.0, 1.0); // [0, 1]区间内的随机数
-            double r_1 = rand_real(rand_eng);
-            double r_2 = rand_real(rand_eng);
             double a = 2.0 * (1 - epo/EPOCH);
-            double A = a * (2.0 * r_1 - 1.0);
-            double C = 2.0 * r_2;
 
             // 更新位置
-            for(int j=0; j<(*i).position.size(); j++) { // 以下标顺序遍历
-                double Dist = abs(C * targetPosition.at(j) - (*i).position.at(j));
-                double newPosition = targetPosition.at(j) - A * Dist;
-                // 界限检查
-                if(newPosition < MIN_POS)
-                    newPosition = MIN_POS;
-                if(newPosition > MAX_POS)
-                    newPosition = MAX_POS;
-                (*i).position.at(j) = newPosition;
-            }
-
-            // 映射任务序列
-            (*i).ROV();
+            double Dist = (*i).taskList.size() * a;
+            normal_distribution<double> rand_norm(0, 2);
+            Dist += rand_norm(rand_eng);
+            uniform_int_distribution<int> rand_int(0, 2);
+            (*i).taskList = getNewTaskSequence(population.at(rand_int(rand_eng)).taskList, (int)Dist);
 
             // 更新fitness
             (*i).fitness = (*i).calcFitness();
@@ -213,52 +249,35 @@ for(auto it_r = iRep.begin(); it_r != iRep.end(); it_r++) { // 实例重复轮�
     // 计算运行时间
     double duration = (endTime.tv_sec - startTime.tv_sec)*1000.0 + (endTime.tv_usec - startTime.tv_usec)/1000.0;
 
-    // 记录信息
-    resultReport += *it_n + "\t"; // 任务数量
-    resultReport += *it_r + '\t'; // 测试次数编号
-    resultReport += to_string(championWolf.fitness) + "\t"; // 最优makespan
-    resultReport += to_string(duration) + "\t"; // 运行时间
-    resultReport += "\n";
-
-    // 控制台输出日志
-    time_t time_t_now = time(nullptr);
-    char* timeStamp = ctime(&time_t_now);
-    timeStamp[strlen(timeStamp) - 1] = 0;
-    cout << "[" << timeStamp <<"] ";
-    cout << "Completed Instance " + *it_n + "_" + *it_r + ".\n";
-
-} // 实例重复轮次循环结束
-} // 实例任务数量循环结束
-
     // 写入输出文件
     ofstream fileOut;
-    fileOut.open("./Test Result - GWO (Continuous).txt");
+    fileOut.open("./Test Result - GWO (Discrete, Hamming Distance).txt");
+    string resultReport = "";
+    resultReport += to_string(taskList.size()) + "\t"; // 任务数量
+    resultReport += to_string(0) + '\t'; // 测试次数编号
+    resultReport += to_string(championWolf.fitness) + "\t"; // 最优makespan
+    resultReport += to_string(duration) + "\t"; // 运行时间
+    resultReport += "\t";
     fileOut << resultReport;
     fileOut.close();
 
-    // // 历代最优值记录
-    // fileOut.open("./Champion Record - GWO (Continuous).txt");
-    // string championRecordReport = "";
-    // for(int i=0; i<championFitnessRecord.size(); i++)
-    //     championRecordReport += to_string(i) + "\t" + to_string(championFitnessRecord.at(i)) + "\n";
-    // fileOut << championRecordReport;
-    // fileOut.close();
+    // 历代最优值记录
+    fileOut.open("./Champion Record - GWO (Discrete, Hamming Distance).txt");
+    string championRecordReport = "";
+    for(int i=0; i<championFitnessRecord.size(); i++)
+        championRecordReport += to_string(i) + "\t" + to_string(championFitnessRecord.at(i)) + "\n";
+    fileOut << championRecordReport;
+    fileOut.close();
 
     // Test
     // for(auto i = population.begin(); i != population.end(); i++) {
-    //     for(auto j = (*i).taskList.begin(); j != (*i).taskList.end(); j++)
+    //     assert(! (*i).taskList.empty());
+    //     for(auto j = (*i).taskList.begin(); j != (*i).taskList.end(); j++) {
     //         cout << (*j).id <<' ';
+    //     }
     //     cout << endl;
-    //     // for(auto j = (*i).position.begin(); j != (*i).position.end(); j++)
-    //     //     cout << (*j) <<' ';
-    //     // cout << endl;
     //     cout << (*i).id << ' ' << (*i).fitness << '\n';
     // }
-    // cout << "----------\n";
-    // for(auto j = alphaWolf.taskList.begin(); j != alphaWolf.taskList.end(); j++)
-    //     cout << (*j).id <<' ';
-    // cout << endl;
-    // cout << alphaWolf.id << ' ' << alphaWolf.fitness << '\n';
 
     return 0;
 }
