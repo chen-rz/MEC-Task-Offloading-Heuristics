@@ -20,7 +20,7 @@ using namespace std;
 
 #define POP_SIZE 30 // 灰狼种群规模
 #define EPOCH 1000 // 迭代次数
-#define POWER 70.0 // 发射功率（mW）
+#define POWER 5.0 // 发射功率（mW）
 #define MIN_POS 0.0 // 位置下限
 #define MAX_POS 4.0 // 位置上限
 
@@ -131,7 +131,7 @@ int main() {
     string resultReport = "";
 
 // 实例测试
-vector<string> iTN {/*"10", "20",*/ "30", "40", "50", "60", "70", "80", "90", "100"}; // 实例任务数量
+vector<string> iTN {"10", "20", "30", "40", "50", "60", "70", "80", "90", "100"}; // 实例任务数量
 vector<string> iID {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}; // 实例编号
 int iRepeatTimes = 5; // 每个实例重复次数
 
@@ -140,7 +140,7 @@ for(auto it_id = iID.begin(); it_id != iID.end(); it_id++) { // 实例编号循�
 for(int i_r = 0; i_r < iRepeatTimes; i_r++) { // 实例重复测试开始
 
     // 读取任务序列
-    vector<Task> taskList = readInstanceFile("./TestInstances_3/" + *it_n + "/" + *it_n + "_" + *it_id + ".txt");
+    vector<Task> taskList = readInstanceFile("./TestInstances/" + *it_n + "/" + *it_n + "_" + *it_id + ".txt");
 
     // 记录历代最优值
     vector<double> championFitnessRecord;
