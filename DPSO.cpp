@@ -18,7 +18,7 @@ using namespace std;
 #define N0 -174 // 噪声功率谱密度（dB * m / Hz）
 #define F 1.0E9 // 服务器CPU频率（Hz）
 
-#define POP_SIZE 30 // 灰狼种群规模
+#define POP_SIZE 30 // 粒子群规模
 #define EPOCH 1000 // 迭代次数
 #define POWER 5.0 // 发射功率（mW）
 
@@ -41,26 +41,57 @@ class Task {
         }
 };
 
-class Wolf {
+// 计算变换序列
+vector<pair<int, int>> calcSwapSequence(const vector<Task>& from, const vector<Task>& to) {
+    assert(from.size() == to.size());
+    vector<pair<int, int>> swapSequence;
+    auto emul = from; // 使用副本模拟变换，保证原序列不受影响
+    
+    for(int i=0; i<to.size(); i++) {
+        for(int j=i; j<emul.size(); j++) {
+            if(emul.at(j).id == to.at(i).id) { // 需取出Task的id进行比较
+                if(i != j) { // 在同一位置则不需要变化
+                    swapSequence.emplace_back(pair<int, int> (i, j));
+                    swap(emul.at(i), emul.at(j));
+                }
+                break;
+            }
+        }
+    }
+
+    return swapSequence;
+}
+
+class Particle {
     public:
         int id;
         vector<Task> taskList;
         double fitness;
+        vector<pair<int, int>> velocity;
 
         double calcFitness();
+        void initVelocity();
 
-        Wolf(int id, vector<Task> taskList) {
+        Particle(int id, vector<Task> taskList) {
             this->id = id;
             this->taskList = taskList;
             this->fitness = calcFitness(); // 自动计算适应度
+            this->initVelocity(); // 自动生成初始velocity
         }
-        Wolf() {
+        Particle() {
             this->id = -1;
             this->fitness = INT_MAX;
         }
 };
+// 生成初始velocity
+void Particle::initVelocity() {
+    auto randomTaskList = this->taskList;
+    random_shuffle(randomTaskList.begin(), randomTaskList.end());
+
+    this->velocity = calcSwapSequence(this->taskList, randomTaskList);
+}
 // 计算fitness（makespan）
-double Wolf::calcFitness() {
+double Particle::calcFitness() {
     vector<double> t_ready, t_complete;
     double sum_dataSize = 0.0; // 前i个任务的数据量和
     for(auto i = taskList.begin(); i != taskList.end(); i++) {
@@ -83,27 +114,6 @@ double Wolf::calcFitness() {
 
     assert(t_complete.size() == taskList.size());
     return *(max_element(t_complete.begin(), t_complete.end()));
-}
-
-// 计算变换序列
-vector<pair<int, int>> calcSwapSequence(const vector<Task>& from, const vector<Task>& to) {
-    assert(from.size() == to.size());
-    vector<pair<int, int>> swapSequence;
-    auto emul = from; // 使用副本模拟变换，保证原序列不受影响
-    
-    for(int i=0; i<to.size(); i++) {
-        for(int j=i; j<emul.size(); j++) {
-            if(emul.at(j).id == to.at(i).id) { // 需取出Task的id进行比较
-                if(i != j) { // 在同一位置则不需要变化
-                    swapSequence.emplace_back(pair<int, int> (i, j));
-                    swap(emul.at(i), emul.at(j));
-                }
-                break;
-            }
-        }
-    }
-
-    return swapSequence;
 }
 
 // 读取Instance文件，格式：id - dataSize - cyclePerBit
@@ -146,66 +156,68 @@ for(int i_r = 0; i_r < iRepeatTimes; i_r++) { // 实例重复测试开始
     struct timeval startTime;
     mingw_gettimeofday(&startTime, NULL);
 
-    // 初始化灰狼种群
-    vector<Wolf> population;
-    Wolf alphaWolf, betaWolf, deltaWolf, championWolf;
-    championWolf.fitness = INT_MAX;
+    // 初始化粒子群
+    vector<Particle> swarm;
+    Particle bestParticle, championParticle;
+    championParticle.fitness = INT_MAX;
     for(int i=0; i<POP_SIZE; i++) {
         random_shuffle(taskList.begin(), taskList.end()); // 随机个体
-        population.emplace_back( Wolf(i, taskList) ); // 列入种群，自动计算适应度
+        swarm.emplace_back( Particle(i, taskList) ); // 列入种群，自动计算适应度
     }
-    // 初始设置前三名和历史最佳
-    sort( population.begin(), population.end(), [](Wolf a, Wolf b){return a.fitness < b.fitness;} );
-    alphaWolf = population.at(0);
-    betaWolf = population.at(1);
-    deltaWolf = population.at(2);
-    if(alphaWolf.fitness < championWolf.fitness)
-        championWolf = alphaWolf;
+    // 初始设置第一名和历史最佳
+    sort( swarm.begin(), swarm.end(), [](Particle a, Particle b){return a.fitness < b.fitness;} );
+    bestParticle = swarm.at(0);
+    if(bestParticle.fitness < championParticle.fitness)
+        championParticle = bestParticle;
 
-    // 灰狼算法迭代
+    // 粒子群算法迭代
     for(int epo = 0; epo < EPOCH; epo++) {
-        // 对于种群中的每一个个体
-        for(auto i = population.begin(); i != population.end(); i++) {
-            // 更新参数
-            uniform_real_distribution<double> rand_real(0.0, 1.0);
-            double c_1 = rand_real(rand_eng);
-            double c_2 = rand_real(rand_eng);
-            double c_3 = rand_real(rand_eng);
+        // 对于每一个粒子
+        for(auto i = swarm.begin(); i != swarm.end(); i++) {
+            // 参数
+            double c_1 = 0.5;
+            double c_2 = 0.5;
+            double c_3 = 0.5;
 
-            // 更新位置
             // 计算变换序列
-            auto alphaSwapSequence = calcSwapSequence((*i).taskList, alphaWolf.taskList);
-            auto betaSwapSequence = calcSwapSequence((*i).taskList, betaWolf.taskList);
-            auto deltaSwapSequence = calcSwapSequence((*i).taskList, deltaWolf.taskList);
-            
-            for(auto i_ss = alphaSwapSequence.begin(); i_ss != alphaSwapSequence.end(); i_ss++) {
+            auto bestSwapSequence = calcSwapSequence((*i).taskList, bestParticle.taskList);
+            auto championSwapSequence = calcSwapSequence((*i).taskList, championParticle.taskList);
+
+            // 新的velocity
+            decltype((*i).velocity) newVelocity;
+
+            uniform_real_distribution<double> rand_real(0.0, 1.0);
+            for(auto i_ss = (*i).velocity.begin(); i_ss != (*i).velocity.end(); i_ss++) {
                 if(rand_real(rand_eng) < c_1) {
+                    newVelocity.emplace_back((*i_ss));
                     swap((*i).taskList.at((*i_ss).first), (*i).taskList.at((*i_ss).second));
                 }
             }
-            for(auto i_ss = betaSwapSequence.begin(); i_ss != betaSwapSequence.end(); i_ss++) {
+            for(auto i_ss = bestSwapSequence.begin(); i_ss != bestSwapSequence.end(); i_ss++) {
                 if(rand_real(rand_eng) < c_2) {
+                    newVelocity.emplace_back((*i_ss));
                     swap((*i).taskList.at((*i_ss).first), (*i).taskList.at((*i_ss).second));
                 }
             }
-            for(auto i_ss = deltaSwapSequence.begin(); i_ss != deltaSwapSequence.end(); i_ss++) {
+            for(auto i_ss = championSwapSequence.begin(); i_ss != championSwapSequence.end(); i_ss++) {
                 if(rand_real(rand_eng) < c_3) {
+                    newVelocity.emplace_back((*i_ss));
                     swap((*i).taskList.at((*i_ss).first), (*i).taskList.at((*i_ss).second));
                 }
             }
+
+            (*i).velocity = newVelocity;
 
             // 更新fitness
             (*i).fitness = (*i).calcFitness();
         }
 
-        // 更新前三名和历史最佳
-        sort( population.begin(), population.end(), [](Wolf a, Wolf b){return a.fitness < b.fitness;} );
-        alphaWolf = population.at(0);
-        betaWolf = population.at(1);
-        deltaWolf = population.at(2);
-        if(alphaWolf.fitness < championWolf.fitness)
-            championWolf = alphaWolf;
-        championFitnessRecord.emplace_back(championWolf.fitness);
+        // 更新第一名和历史最佳
+        sort( swarm.begin(), swarm.end(), [](Particle a, Particle b){return a.fitness < b.fitness;} );
+        bestParticle = swarm.at(0);
+        if(bestParticle.fitness < championParticle.fitness)
+            championParticle = bestParticle;
+        championFitnessRecord.emplace_back(championParticle.fitness);
     }
 
     // 停止计时
@@ -218,7 +230,7 @@ for(int i_r = 0; i_r < iRepeatTimes; i_r++) { // 实例重复测试开始
     resultReport += *it_n + "\t"; // 任务数量
     resultReport += *it_id + '\t'; // 测试实例编号
     resultReport += to_string(i_r) + "\t"; // 重复测试次数
-    resultReport += to_string(championWolf.fitness) + "\t"; // 最优makespan
+    resultReport += to_string(championParticle.fitness) + "\t"; // 最优makespan
     resultReport += to_string(duration) + "\t"; // 运行时间
     resultReport += "\n";
 
@@ -235,12 +247,12 @@ for(int i_r = 0; i_r < iRepeatTimes; i_r++) { // 实例重复测试开始
 
     // 写入输出文件
     ofstream fileOut;
-    fileOut.open("./Test Result - GWO (Discrete, Bangladesh).txt");
+    fileOut.open("./Test Result - DPSO.txt");
     fileOut << resultReport;
     fileOut.close();
 
-    // // 历代最优值记录
-    // fileOut.open("./Champion Record - GWO (Discrete, Bangladesh).txt");
+    // 历代最优值记录
+    // fileOut.open("./Champion Record - DPSO.txt");
     // string championRecordReport = "";
     // for(int i=0; i<championFitnessRecord.size(); i++)
     //     championRecordReport += to_string(i) + "\t" + to_string(championFitnessRecord.at(i)) + "\n";
@@ -248,7 +260,7 @@ for(int i_r = 0; i_r < iRepeatTimes; i_r++) { // 实例重复测试开始
     // fileOut.close();
 
     // Test
-    // for(auto i = population.begin(); i != population.end(); i++) {
+    // for(auto i = swarm.begin(); i != swarm.end(); i++) {
     //     assert(! (*i).taskList.empty());
     //     for(auto j = (*i).taskList.begin(); j != (*i).taskList.end(); j++) {
     //         cout << (*j).id <<' ';
