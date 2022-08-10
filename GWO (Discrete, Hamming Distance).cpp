@@ -232,20 +232,15 @@ for(int i_r = 0; i_r < iRepeatTimes; i_r++) { // 实例重复测试开始
         for(auto i = population.begin(); i != population.end(); i++) {
             // 更新参数
             double a = 2.0 * (1 - epo/EPOCH);
-
-            // // 更新位置
-            // double Dist = (*i).taskList.size() * a;
-            // normal_distribution<double> rand_norm(0, 2);
-            // Dist += rand_norm(rand_eng);
-            // uniform_int_distribution<int> rand_int(0, 2);
-            // (*i).taskList = getNewTaskSequence(population.at(rand_int(rand_eng)).taskList, (int)Dist);
+            uniform_real_distribution<double> rand_real(0.0, 1.0);
+            double r_1 = rand_real(rand_eng);
+            double A = a * (2*r_1 - 1);
 
             // 更新位置，Hamming Distance
             uniform_int_distribution<int> rand_int(0, 2);
             int wolfIndexChosen = rand_int(rand_eng);
             double Dist = calcHammingDistance(population.at(wolfIndexChosen).taskList, (*i).taskList);
-            normal_distribution<double> rand_norm(0, 2);
-            Dist += rand_norm(rand_eng);
+            Dist *= A;            
             (*i).taskList = getNewTaskSequence(population.at(wolfIndexChosen).taskList, (int)Dist);
 
             // 更新fitness

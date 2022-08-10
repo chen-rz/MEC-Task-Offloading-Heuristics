@@ -2,7 +2,6 @@
 #include <fstream>
 #include <assert.h>
 #include <vector>
-#include <utility>
 #include <string.h>
 #include <algorithm>
 #include <math.h>
@@ -85,25 +84,79 @@ double Wolf::calcFitness() {
     return *(max_element(t_complete.begin(), t_complete.end()));
 }
 
-// 计算变换序列
-vector<pair<int, int>> calcSwapSequence(const vector<Task>& from, const vector<Task>& to) {
-    assert(from.size() == to.size());
-    vector<pair<int, int>> swapSequence;
-    auto emul = from; // 使用副本模拟变换，保证原序列不受影响
+// ？
+int Dn(int n) {
+    int d_n = - (n % 2) + (n + 1) % 2;
+    int sum = 0, u = n, d_u = d_n;
+    while(u > 0) {
+        sum += d_u;
+        d_u = - d_u * u;
+        u -= 1;
+    }
+    sum += d_u;
+    return sum;
+}
+double Prob(int u) {
+    if(u > 10)
+        return 1.0 / u;
+    else
+        return (u - 1.0) * Dn(u - 2)/Dn(u);
+}
+
+// 根据距离更新任务序列
+vector<Task> getNewTaskSequence(vector<Task> taskSeq, int distance) {
+    auto newTaskSeq = taskSeq;
+
+    // 保证距离范围
+    if(distance > taskSeq.size())
+        distance = taskSeq.size();
+    if(distance < 1)
+        distance = 1;
+
+    vector<int> indexes, pickedIndex, marked;
+    decltype(taskSeq) que;
+    for(int i=0; i<taskSeq.size(); i++)
+        indexes.emplace_back(i);
     
-    for(int i=0; i<to.size(); i++) {
-        for(int j=i; j<emul.size(); j++) {
-            if(emul.at(j).id == to.at(i).id) { // 需取出Task的id进行比较
-                if(i != j) { // 在同一位置则不需要变化
-                    swapSequence.emplace_back(pair<int, int> (i, j));
-                    swap(emul.at(i), emul.at(j));
-                }
-                break;
-            }
-        }
+    for(int i=0; i<distance; i++) {
+        int rIndex = taskSeq.size() - i - 1; // 反向遍历下标
+        uniform_int_distribution<int> rand_int(0, rIndex);
+        int swapIndex = rand_int(rand_eng); // 随机取一个用来交换
+        swap(indexes.at(rIndex), indexes.at(swapIndex));
+        pickedIndex.emplace_back(indexes.at(rIndex)); // 记录已选的下标
+        que.emplace_back(taskSeq.at(indexes.at(rIndex)));
+        marked.emplace_back(0);
     }
 
-    return swapSequence;
+    // ？
+    for(int i = 0; i < distance - 1; i++) {
+        int rIndex = distance - i - 1; // 反向遍历下标
+        uniform_int_distribution<int> rand_int(0, rIndex);
+        int swapIndex = rand_int(rand_eng);
+        if(marked.at(rIndex) == 1)
+            continue;
+        while(true) {
+            if(marked.at(swapIndex) == 0)
+                break;
+            int firstavailable = distance;
+            for(int i=0; i<distance; i++) {
+                if(marked.at(i) == 0)
+                    firstavailable = i;
+            }
+            if(firstavailable >= rIndex)
+                break;
+        }
+        swap(que.at(rIndex), que.at(swapIndex));
+
+        uniform_real_distribution<double> rand_p(0.0, 1.0);
+        double p = rand_p(rand_eng);
+        if(p < Prob(rIndex + 1))
+            marked.at(swapIndex) = 1;
+    }
+
+    for(int i=0; i<distance; i++)
+        newTaskSeq.at(pickedIndex.at(i)) = que.at(i);
+    return newTaskSeq;
 }
 
 // 读取Instance文件，格式：id - dataSize - cyclePerBit
@@ -141,7 +194,7 @@ for(int i_r = 0; i_r < iRepeatTimes; i_r++) { // 实例重复测试开始
 
     // 记录历代最优值
     vector<double> championFitnessRecord;
-    
+
     // 开始计时
     struct timeval startTime;
     mingw_gettimeofday(&startTime, NULL);
@@ -170,18 +223,11 @@ for(int i_r = 0; i_r < iRepeatTimes; i_r++) { // 实例重复测试开始
             double a = 2.0 * (1 - epo/EPOCH);
 
             // 更新位置
-            // 选择alpha、beta、delta中的一个跟随
+            double Dist = (*i).taskList.size() * a;
+            normal_distribution<double> rand_norm(0, 2);
+            Dist += rand_norm(rand_eng);
             uniform_int_distribution<int> rand_int(0, 2);
-            // 计算变换序列
-            auto swapSequence = calcSwapSequence((*i).taskList, population.at(rand_int(rand_eng)).taskList);
-            // 依概率变换
-            uniform_real_distribution<double> rand_real(0.0, 1.0);
-            double threshold = a*0.3 + 0.2; // 从0.8到0.2
-            for(auto i_ss = swapSequence.begin(); i_ss != swapSequence.end(); i_ss++) {
-                if(rand_real(rand_eng) > threshold) {
-                    swap((*i).taskList.at((*i_ss).first), (*i).taskList.at((*i_ss).second));
-                }
-            }
+            (*i).taskList = getNewTaskSequence(population.at(rand_int(rand_eng)).taskList, (int)Dist);
 
             // 更新fitness
             (*i).fitness = (*i).calcFitness();
@@ -224,12 +270,12 @@ for(int i_r = 0; i_r < iRepeatTimes; i_r++) { // 实例重复测试开始
 
     // 写入输出文件
     ofstream fileOut;
-    fileOut.open("./Test Result - GWO (Discrete, Bangladesh).txt");
+    fileOut.open("./Test Result - GWO (Discrete, No Distance).txt");
     fileOut << resultReport;
     fileOut.close();
 
     // // 历代最优值记录
-    // fileOut.open("./Champion Record - GWO (Discrete, Bangladesh).txt");
+    // fileOut.open("./Champion Record - GWO (Discrete, No Distance).txt");
     // string championRecordReport = "";
     // for(int i=0; i<championFitnessRecord.size(); i++)
     //     championRecordReport += to_string(i) + "\t" + to_string(championFitnessRecord.at(i)) + "\n";
