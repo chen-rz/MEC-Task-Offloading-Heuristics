@@ -86,7 +86,7 @@ class Particle {
 // 生成初始velocity
 void Particle::initVelocity() {
     auto randomTaskList = this->taskList;
-    random_shuffle(randomTaskList.begin(), randomTaskList.end());
+    shuffle(randomTaskList.begin(), randomTaskList.end(), rand_eng);
 
     this->velocity = calcSwapSequence(this->taskList, randomTaskList);
 }
@@ -161,7 +161,7 @@ for(int i_r = 0; i_r < iRepeatTimes; i_r++) { // 实例重复测试开始
     Particle bestParticle, championParticle;
     championParticle.fitness = INT_MAX;
     for(int i=0; i<POP_SIZE; i++) {
-        random_shuffle(taskList.begin(), taskList.end()); // 随机个体
+        shuffle(taskList.begin(), taskList.end(), rand_eng); // 随机个体
         swarm.emplace_back( Particle(i, taskList) ); // 列入种群，自动计算适应度
     }
     // 初始设置第一名和历史最佳

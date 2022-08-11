@@ -215,7 +215,7 @@ for(int i_r = 0; i_r < iRepeatTimes; i_r++) { // 实例重复测试开始
     Wolf alphaWolf, betaWolf, deltaWolf, championWolf;
     championWolf.fitness = INT_MAX;
     for(int i=0; i<POP_SIZE; i++) {
-        random_shuffle(taskList.begin(), taskList.end()); // 随机个体
+        shuffle(taskList.begin(), taskList.end(), rand_eng); // 随机个体
         population.emplace_back( Wolf(i, taskList) ); // 列入种群，自动计算适应度
     }
     // 初始设置前三名和历史最佳

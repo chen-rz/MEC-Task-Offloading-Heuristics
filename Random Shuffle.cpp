@@ -4,6 +4,7 @@
 #include <vector>
 #include <string.h>
 #include <algorithm>
+#include <random>
 #include <math.h>
 #include <time.h>
 using namespace std;
@@ -17,6 +18,8 @@ using namespace std;
 #define F 1.0E9 // 服务器CPU频率（Hz）
 
 #define POWER 5.0 // 发射功率（mW）
+
+default_random_engine rand_eng(time(0)); // 随机数
 
 // 由发射功率计算任务传输速率
 double R(double power) {
@@ -99,7 +102,7 @@ for(int i_r = 0; i_r < iRepeatTimes; i_r++) { // 实例重复测试开始
     mingw_gettimeofday(&startTime, NULL);
 
     // 计算makespan
-    random_shuffle(taskList.begin(), taskList.end());
+    shuffle(taskList.begin(), taskList.end(), rand_eng);
     double makespan = calcFitness(taskList);
 
     // 停止计时
